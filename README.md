@@ -1,8 +1,101 @@
 # Gestational Diabetes Data Analyis
 
-### Paper: 
+## Paper: 
 https://pubmed.ncbi.nlm.nih.gov/38763341/
 
-### Data:
+## Data:
 https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE249311
 
+### Controls:
+- https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM7933405
+- https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM7933406
+- https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM7933407
+
+### GDMA1:
+- https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM7933392
+- https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM7933393
+- https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM7933394
+
+### GDMA2:
+- https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM7933399
+- https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM7933400
+- https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM7933401
+
+## Pipeline
+
+1. FastQC (v0.11.7)
+2. Trimmomatic (v0.38)
+3. FastQC (v0.11.7)
+4. STAR (v2.7.9a) aligning against GRCh38-2020-A
+5. Picard (v2.20.8)
+
+### FastQC
+
+Used for quality control of FastQ files.
+
+```
+fastqc *_{1,2}.fastq.gz
+```
+
+### Trimmomatic
+
+Used to trim barcodes and adapters.
+
+```    
+trimmomatic PE -threads 4 -phred33 \\
+        ${sample_id}_1.fastq ${sample_id}_2.fastq \\
+        ${sample_id}_1.trimmed.fastq.gz ${sample_id}_1.fastq.gz \\
+        ${sample_id}_2.trimmed.fastq.gz ${sample_id}_2.fastq.gz \\
+        ILLUMINACLIP:TruSeq3-PE.fa:2:30:10 \\
+        SLIDINGWINDOW:4:15 MINLEN:50 \\
+        2> ${sample_id}.trimmomatic.log
+```
+
+### FastQC
+
+Used to compare quality of FastQ files after trimming.
+
+```
+fastqc *_{1,2}.trimmed.fastq.gz
+```
+
+### STAR
+
+```
+mkdir star_index
+STAR --runMode genomeGenerate \\
+  --runThreadN 8 \\
+  --genomeDir star_index \\
+  --genomeFastaFiles refdata-gex-GRCh38-2020-A/fasta/genome.fa \\
+  --sjdbGTFfile refdata-gex-GRCh38-2020-A/genes/genes.gtf \\
+  --sjdbOverhang 99
+
+STAR --runMode alignReads \\
+  --runThreadN 8 \\
+  --genomeDir star_index \\
+  --readFilesIn ${sample_id}_1.trimmed.fastq.gz ${sample_id}_2.trimmed.fastq.gz \\
+  --readFilesCommand zcat \\
+  --outFilterType BySJout \\
+  --outFilterMultimapNmax 20 \\
+  --alignSJoverhangMin 8 \\
+  --alignSJDBoverhangMin 1 \\
+  --outFilterMismatchNmax 999 \\
+  --outFilterMismatchNoverReadLmax 0.04 \\
+  --alignIntronMin 20 \\
+  --alignIntronMax 1000000 \\
+  --alignMatesGapMax 1000000 \\
+  --outSAMtype BAM SortedByCoordinate \\
+  --outFileNamePrefix ${sample_id}
+```
+
+### Picard
+
+```
+picard MarkDuplicates \\
+  INPUT=${sample_id}Aligned.sortedByCoord.out.bam \\
+  OUTPUT=${sample_id}.dedup.bam \\
+  METRICS_FILE=${sample_id}.dup_metrics.txt \\
+  REMOVE_DUPLICATES=true \\
+  CREATE_INDEX=true \\
+  VALIDATION_STRINGENCY=SILENT
+```
