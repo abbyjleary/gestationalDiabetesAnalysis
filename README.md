@@ -1,22 +1,22 @@
 # Gestational Diabetes Data Analyis
 
-## Paper: 
+## Reference Resarch Paper
 https://pubmed.ncbi.nlm.nih.gov/38763341/
 
-## Data:
+## Data
 https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE249311
 
-### Controls:
+### Controls
 - https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM7933405
 - https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM7933406
 - https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM7933407
 
-### GDMA1:
+### GDMA1
 - https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM7933392
 - https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM7933393
 - https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM7933394
 
-### GDMA2:
+### GDMA2
 - https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM7933399
 - https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM7933400
 - https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM7933401
@@ -31,7 +31,7 @@ https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE249311
 
 ### FastQC
 
-Used for quality control of FastQ files.
+Use for quality control of FastQ files.
 
 ```
 fastqc *_{1,2}.fastq.gz
@@ -39,7 +39,7 @@ fastqc *_{1,2}.fastq.gz
 
 ### Trimmomatic
 
-Used to trim barcodes and adapters.
+Use to trim barcodes and adapters.
 
 ```    
 trimmomatic PE -threads 4 -phred33 \\
@@ -53,13 +53,15 @@ trimmomatic PE -threads 4 -phred33 \\
 
 ### FastQC
 
-Used to compare quality of FastQ files after trimming.
+Use to compare quality of FastQ files after trimming.
 
 ```
 fastqc *_{1,2}.trimmed.fastq.gz
 ```
 
 ### STAR
+
+Align sequences to the human genome (GRCh38).
 
 ```
 mkdir star_index
@@ -90,6 +92,8 @@ STAR --runMode alignReads \\
 
 ### Picard
 
+Remove duplicate reads from alignments.
+
 ```
 picard MarkDuplicates \\
   INPUT=${sample_id}Aligned.sortedByCoord.out.bam \\
@@ -98,4 +102,14 @@ picard MarkDuplicates \\
   REMOVE_DUPLICATES=true \\
   CREATE_INDEX=true \\
   VALIDATION_STRINGENCY=SILENT
+```
+
+### HTSeq
+
+Convert BAM files to tsv with gene counts for further analysis.
+
+```
+htseq-count -f bam -s no -r pos \\
+  --additional-attr=gene_name \\
+  ${sample_id}.dedup.bam null > ${sample_id}.htseq.counts.txt
 ```
