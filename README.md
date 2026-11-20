@@ -1,25 +1,35 @@
-# Gestational Diabetes Data Analyis
+# Gestational Diabetes Data Analysis
 
-## Reference Resarch Paper
+```
+gestationalDiabetesAnalysis/
+├── reformat_data.py
+├── analysis.py
+├── data/
+│   ├── metadata.tsv (disease types of each sample)
+│   ├── data.tsv (master list of gene counts)
+│   └── SRR*.tsv (gene counts per sample)
+└── results/
+    └── images of results graphs
+```
+
+## Reference Research Paper
+#### Discrete placental gene expression signatures of diabetes during pregnancy
 https://pubmed.ncbi.nlm.nih.gov/38763341/
 
 ## Data
 https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE249311
 
-### Controls
-- https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM7933405
-- https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM7933406
-- https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM7933407
-
-### GDMA1
-- https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM7933392
-- https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM7933393
-- https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM7933394
-
-### GDMA2
-- https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM7933399
-- https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM7933400
-- https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM7933401
+| Type    | Sample | NCBI Link                                                      |
+|---------|--------|----------------------------------------------------------------|
+| Control | SRR27056481 | https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM7933405  |
+| Control | SRR27056480 | https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM7933406  |
+| Control | SRR27056455 | https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM7933407  |
+| GDMA1   | SRR27056470 | https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM7933392  |
+| GDMA1   | SRR27056469 | https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM7933393  |
+| GDMA1   | SRR27056468 | https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM7933394  |
+| GDMA2   | SRR27056487 | https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM7933399  |
+| GDMA2   | SRR27056486 | https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM7933400  |
+| GDMA2   | SRR27056485 | https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM7933401  |
 
 ## Pipeline
 
