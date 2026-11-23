@@ -5,6 +5,7 @@ from pydeseq2.dds import DeseqDataSet
 from pydeseq2.ds import DeseqStats
 import seaborn as sns
 import matplotlib.pyplot as plt
+from matplotlib_venn import venn2
 from sklearn.decomposition import PCA
 from adjustText import adjust_text
 import gseapy as gp
@@ -26,7 +27,60 @@ def read_inputs(data_infile, metadata_infile):
 
     return data, metadata
 
-def create_pca(data, transpose):
+def create_pca_deseq(dds):
+    # create a variant stabilization transformation based on the deseq dataset
+    dds.vst(use_design=False)
+    vst = pd.DataFrame(
+        dds.layers["vst_counts"],
+        index=dds.obs_names,
+        columns=dds.var_names,
+    )
+
+    # fit PCA to data
+    pca = PCA(n_components=2)
+    coords = pca.fit_transform(vst)
+
+    pca_df = pd.DataFrame(coords, columns=["PC1", "PC2"], index=vst.index)
+
+    pca_df["Type"] = metadata.loc[vst.index, "Type"].values
+
+    plt.figure(figsize=(9, 7))
+
+    # create plot for samples plotted on PCA
+    pca_df["Type"] = labels
+    ax = sns.scatterplot(
+        data=pca_df,
+        x='PC1',
+        y='PC2',
+        hue='Type',
+        s=100,
+        palette='Set1',
+        alpha=0.6
+    )
+
+    # label each point with sample name
+    for x, y, label in zip(pca_df["PC1"], pca_df["PC2"], pca_df.index):
+        ax.annotate(
+            label,
+            (x, y),
+            xytext=(5, -5),
+            textcoords="offset points",
+            va="center",
+        )
+
+
+    # Label PC axes with explained variance percentage
+    var_exp = pca.explained_variance_ratio_ * 100
+    plt.xlabel(f'PC1 ({var_exp[0]:.1f}% Variance Explained)', fontsize=12)
+    plt.ylabel(f'PC2 ({var_exp[1]:.1f}% Variance Explained)', fontsize=12)
+
+    plt.title(f'PCA of Gene Expression', fontsize=14, fontweight='bold')
+    plt.grid(True, linestyle='--', alpha=0.5)
+
+    plt.tight_layout()
+    plt.savefig(f"results/pca_deseq.png", dpi=300, bbox_inches="tight")
+
+def create_pca_sklearn(data):
     # normalize data with log2 transformation
     log_df = np.log2(data + 1)
 
@@ -36,18 +90,12 @@ def create_pca(data, transpose):
     # z-score each gene across samples (number of stdevs away from mean)
     z = (log_df - log_df.mean(axis=0)) / log_df.std(axis=0)
 
-    # transpose matrix based on samples/genes
-    if transpose:
-        gene_matrix = z.T
-    else:
-        gene_matrix = z
-
     # project data into PCA components
     pca = PCA(n_components=2)
-    pca_coords = pca.fit_transform(gene_matrix)
+    pca_coords = pca.fit_transform(z)
 
     # create dataframe from PCA components, with labels from original data
-    pca_df = pd.DataFrame(pca_coords, columns=["PC1", "PC2"], index=gene_matrix.index)
+    pca_df = pd.DataFrame(pca_coords, columns=["PC1", "PC2"], index=z.index)
     pca_df["Type"] = labels
 
     # find mean of each group of genes
@@ -55,54 +103,40 @@ def create_pca(data, transpose):
 
     plt.figure(figsize=(9, 7))
 
-    # create plot for genes plotted on PCA
-    if transpose:
-        pca_df["Type"] = group_means.idxmax(axis=0)
-        ax = sns.scatterplot(
-            data=pca_df,
-            x='PC1',
-            y='PC2',
-            hue='Type',
-            s=15,
-            palette='Set1',
-            alpha=0.6
-        )
-
     # create plot for samples plotted on PCA
-    else:
-        pca_df["Type"] = labels
-        ax = sns.scatterplot(
-            data=pca_df,
-            x='PC1',
-            y='PC2',
-            hue='Type',
-            s=100,
-            palette='Set1',
-            alpha=0.6
-        )
+    pca_df["Type"] = labels
+    ax = sns.scatterplot(
+        data=pca_df,
+        x='PC1',
+        y='PC2',
+        hue='Type',
+        s=100,
+        palette='Set1',
+        alpha=0.6
+    )
 
-        # label each point with sample name
-        for x, y, label in zip(pca_df["PC1"], pca_df["PC2"], pca_df.index):
-            ax.annotate(
-                label,
-                (x, y),
-                xytext=(5, -5),
-                textcoords="offset points",
-                va="center",
-            )
+    # label each point with sample name
+    for x, y, label in zip(pca_df["PC1"], pca_df["PC2"], pca_df.index):
+        ax.annotate(
+            label,
+            (x, y),
+            xytext=(5, -5),
+            textcoords="offset points",
+            va="center",
+        )
 
 
     # Label PC axes with explained variance percentage
     var_exp = pca.explained_variance_ratio_ * 100
     plt.xlabel(f'PC1 ({var_exp[0]:.1f}% Variance Explained)', fontsize=12)
     plt.ylabel(f'PC2 ({var_exp[1]:.1f}% Variance Explained)', fontsize=12)
-    plt.title('PCA of Gene Expression (TPM)', fontsize=14, fontweight='bold')
+    plt.title('PCA of Gene Expression', fontsize=14, fontweight='bold')
     plt.grid(True, linestyle='--', alpha=0.5)
 
     plt.tight_layout()
-    plt.savefig(f"results/pca_{int(transpose)}.png", dpi=300, bbox_inches="tight")
+    plt.savefig(f"results/pca_sklearn.png", dpi=300, bbox_inches="tight")
 
-def create_dss(dds, type_1, type_2):
+def create_ds(dds, type_1, type_2):
     # save various statistics from comparison of the two types
     stats = DeseqStats(dds, contrast=["Type", type_1, type_2])
     stats.summary()
@@ -119,12 +153,11 @@ def create_dss(dds, type_1, type_2):
 def find_top_genes(res):
     # find most significant genes from comparison between two types
     sig = res[(res["padj"] < 0.05) & (res["log2FoldChange"].abs() >= 1)]
-    top_genes = sig.nsmallest(50, "padj").index
 
-    return top_genes
+    return sig.nsmallest(50, "padj").index
 
 def create_volcano_plot(dds, type_1, type_2):
-    res = create_dss(dds, type_1, type_2)
+    res = create_ds(dds, type_1, type_2)
 
     # find up and down regulated genes by comparing against log-fold change and adjusted p-value
     lfc_cut, padj_cut = 1, 0.05
@@ -154,6 +187,8 @@ def create_volcano_plot(dds, type_1, type_2):
     texts = [ax.text(r.log2FoldChange, r.neglog10_padj, g, fontsize=8) for g, r in top.iterrows()]
     adjust_text(texts, ax=ax, arrowprops=dict(arrowstyle="-", lw=0.5))
 
+    plt.title(f'{type_2} Gene Expression Compared to {type_1}', fontsize=14, fontweight='bold')
+
     plt.tight_layout()
     plt.savefig(f"results/volcano_{type_1}_{type_2}.png", dpi=300, bbox_inches="tight")
 
@@ -163,19 +198,18 @@ def create_heatmap(dds, type_1, type_2, type_3, metadata):
     log_norm = np.log2(norm + 1)  # samples x genes
 
     # find statistics for each comparison and union together to compare all
-    res1 = create_dss(dds, type_1, type_2)
+    res1 = create_ds(dds, type_1, type_2)
     top1 = find_top_genes(res1)
 
-    res2 = create_dss(dds, type_1, type_3)
+    res2 = create_ds(dds, type_1, type_3)
     top2 = find_top_genes(res2)
 
-    res3 = create_dss(dds, type_2, type_3)
+    res3 = create_ds(dds, type_2, type_3)
     top3 = find_top_genes(res3)
 
     top_genes = top1.union(top2).union(top3)
 
     mat = log_norm[top_genes]
-
 
     types = metadata.loc[mat.index, "Type"]
     palette = dict(zip(types.unique(), sns.color_palette("Greens", types.nunique())))
@@ -194,23 +228,32 @@ def create_heatmap(dds, type_1, type_2, type_3, metadata):
     for t, c in palette.items():
         g.ax_col_dendrogram.bar(0, 0, color=c, label=t, linewidth=0)
     g.ax_col_dendrogram.legend(title="Type", loc="center", ncol=len(palette))
+    g.ax_cbar.set_title("Z-score", fontsize=10)
 
+    g.fig.suptitle('Gene Expression by Sample and Type', fontsize=14, fontweight='bold')
     plt.tight_layout()
     plt.savefig(f"results/heatmap.png", dpi=300)
 
-def create_gsea(dds, type_1, type_2):
+def create_gsea(dds, type_1, type_2, gene_sets):
     s = DeseqStats(dds, contrast=["Type", type_1, type_2])
     s.summary()
     res = s.results_df
 
+    # remove empty stats, duplicates, then sort
     rnk = res.dropna(subset=["stat"])["stat"]
     rnk = rnk[~rnk.index.duplicated()]
     rnk = rnk.sort_values(ascending=False)
 
+    if gene_sets == "MSigDB":
+        gene_sets_name = "MSigDB_Hallmark_2020"
+    elif gene_sets == "GO":
+        gene_sets_name = "GO_Biological_Process_2023"
+
+    # compare genes to hallmark set of annotations
     pre = gp.prerank(
         rnk=rnk,
-        gene_sets="MSigDB_Hallmark_2020",  # or "KEGG_2021_Human", "GO_Biological_Process_2023"
-        min_size=15, max_size=500,
+        gene_sets=gene_sets_name,
+        min_size=5, max_size=500,
         permutation_num=1000,
         seed=42, threads=4,
         outdir=None,
@@ -233,7 +276,28 @@ def create_gsea(dds, type_1, type_2):
     )
 
     # summary dotplot across pathways
-    gp.dotplot(pre.res2d, column="FDR q-val", cutoff=0.25, title=f"{type_1} vs {type_2}", figsize=(4, 6), ofname=f"results/gsea_{type_1}_{type_2}.png")
+    gp.dotplot(pre.res2d, column="FDR q-val", cutoff=0.25, title=f"{type_1} vs {type_2} ({gene_sets})", figsize=(4, 6), ofname=f"results/gsea_{type_1}_{type_2}_MSigDB.png")
+
+def create_venn_diagram(dds, type_1, type_2):
+    # find stats for both types compared against control
+    ds = create_ds(dds, 'Control', type_1)
+    sset1 = set(ds[(ds["padj"] < 0.05) & (ds["log2FoldChange"].abs() > 1)].index)
+
+    ds = create_ds(dds, 'Control', type_2)
+    sset2 = set(ds[(ds["padj"] < 0.05) & (ds["log2FoldChange"].abs() > 1)].index)
+
+    # plot both subsets in a venn diagram
+    plt.figure(figsize=(9, 7))
+    venn2(
+        subsets=(sset1, sset2),
+        set_labels=(f"{type_1} vs Control", f"{type_2} vs Control"),
+        set_colors=("#1f77b4", "#ff7f0e"),
+        alpha=0.6
+    )
+
+    plt.title('Common Differentially Expressed Genes (Compared to Control)', fontsize=14, fontweight='bold')
+    plt.tight_layout()
+    plt.savefig(f"results/venn_diagram.png", dpi=300)
 
 # read data and metadata from input files
 data, metadata = read_inputs(sys.argv[1], sys.argv[2])
@@ -245,7 +309,7 @@ common = data.index.intersection(metadata.index)
 data = data.loc[common]
 labels = metadata.loc[common, "Type"]
 
-# filter low-count genes (same as before)
+# filter low-count genes
 genes_to_keep = data.columns[data.sum(axis=0) >= 10]
 data = data[genes_to_keep]
 
@@ -253,15 +317,21 @@ data = data[genes_to_keep]
 dds = DeseqDataSet(counts=data, metadata=metadata, design_factors="Type")
 dds.deseq2()
 
-create_pca(data, False)
-create_pca(data, True)
-
-create_volcano_plot(dds, "Control", "GDMA1")
-create_volcano_plot(dds, "Control", "GDMA2")
-create_volcano_plot(dds, "GDMA1", "GDMA2")
-
+# create_pca_deseq(dds)
+# create_pca_sklearn(data)
+#
+# create_volcano_plot(dds, "Control", "GDMA1")
+# create_volcano_plot(dds, "Control", "GDMA2")
+# create_volcano_plot(dds, "GDMA1", "GDMA2")
+#
 create_heatmap(dds, "Control", "GDMA1", "GDMA2", metadata)
 
-create_gsea(dds, "Control", "GDMA1")
-create_gsea(dds, "Control", "GDMA2")
-create_gsea(dds, "GDMA1", "GDMA2")
+# create_gsea(dds, "Control", "GDMA1", "MSigDB")
+# create_gsea(dds, "Control", "GDMA2", "MSigDB")
+# create_gsea(dds, "GDMA1", "GDMA2", "MSigDB")
+#
+# create_gsea(dds, "Control", "GDMA1", "GO")
+# create_gsea(dds, "Control", "GDMA2", "GO")
+# create_gsea(dds, "GDMA1", "GDMA2", "GO")
+
+# create_venn_diagram(dds, "GDMA1", "GDMA2")
