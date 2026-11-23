@@ -136,9 +136,9 @@ def create_pca_sklearn(data):
     plt.tight_layout()
     plt.savefig(f"results/pca_sklearn.png", dpi=300, bbox_inches="tight")
 
-def create_ds(dds, type_1, type_2):
+def create_ds(dds, variant, control):
     # save various statistics from comparison of the two types
-    stats = DeseqStats(dds, contrast=["Type", type_1, type_2])
+    stats = DeseqStats(dds, contrast=["Type", variant, control])
     stats.summary()
     res = stats.results_df
 
@@ -156,8 +156,8 @@ def find_top_genes(res):
 
     return sig.nsmallest(50, "padj").index
 
-def create_volcano_plot(dds, type_1, type_2):
-    res = create_ds(dds, type_1, type_2)
+def create_volcano_plot(dds, variant, control):
+    res = create_ds(dds, variant, control)
 
     # find up and down regulated genes by comparing against log-fold change and adjusted p-value
     lfc_cut, padj_cut = 1, 0.05
@@ -178,7 +178,7 @@ def create_volcano_plot(dds, type_1, type_2):
     ax.axhline(-np.log10(padj_cut), ls="--", c="k", lw=0.8)
 
     # create labels and legend
-    ax.set_xlabel(f"log2 fold change ({type_1} vs {type_2})")
+    ax.set_xlabel(f"log2 fold change ({variant} vs {control})")
     ax.set_ylabel("-log10 adjusted p-value")
     ax.legend()
 
@@ -187,24 +187,24 @@ def create_volcano_plot(dds, type_1, type_2):
     texts = [ax.text(r.log2FoldChange, r.neglog10_padj, g, fontsize=8) for g, r in top.iterrows()]
     adjust_text(texts, ax=ax, arrowprops=dict(arrowstyle="-", lw=0.5))
 
-    plt.title(f'{type_2} Gene Expression Compared to {type_1}', fontsize=14, fontweight='bold')
+    plt.title(f'{variant} Gene Expression Compared to {control}', fontsize=14, fontweight='bold')
 
     plt.tight_layout()
-    plt.savefig(f"results/volcano_{type_1}_{type_2}.png", dpi=300, bbox_inches="tight")
+    plt.savefig(f"results/volcano_{variant}_{control}.png", dpi=300, bbox_inches="tight")
 
-def create_heatmap(dds, type_1, type_2, type_3, metadata):
+def create_heatmap(dds, variant1, variant2, control, metadata):
     # normalize dataframe
     norm = pd.DataFrame(dds.layers["normed_counts"], index=dds.obs_names, columns=dds.var_names)
     log_norm = np.log2(norm + 1)  # samples x genes
 
     # find statistics for each comparison and union together to compare all
-    res1 = create_ds(dds, type_1, type_2)
+    res1 = create_ds(dds, variant1, control)
     top1 = find_top_genes(res1)
 
-    res2 = create_ds(dds, type_1, type_3)
+    res2 = create_ds(dds, variant2, control)
     top2 = find_top_genes(res2)
 
-    res3 = create_ds(dds, type_2, type_3)
+    res3 = create_ds(dds, variant2, variant1)
     top3 = find_top_genes(res3)
 
     top_genes = top1.union(top2).union(top3)
@@ -234,8 +234,8 @@ def create_heatmap(dds, type_1, type_2, type_3, metadata):
     plt.tight_layout()
     plt.savefig(f"results/heatmap.png", dpi=300)
 
-def create_gsea(dds, type_1, type_2, gene_sets):
-    s = DeseqStats(dds, contrast=["Type", type_1, type_2])
+def create_gsea(dds, variant, control, gene_sets):
+    s = DeseqStats(dds, contrast=["Type", variant, control])
     s.summary()
     res = s.results_df
 
@@ -249,7 +249,7 @@ def create_gsea(dds, type_1, type_2, gene_sets):
     elif gene_sets == "GO":
         gene_sets_name = "GO_Biological_Process_2023"
 
-    # compare genes to hallmark set of annotations
+    # compare genes to set of pathways
     pre = gp.prerank(
         rnk=rnk,
         gene_sets=gene_sets_name,
@@ -259,14 +259,17 @@ def create_gsea(dds, type_1, type_2, gene_sets):
         outdir=None,
     )
 
-    pre.res2d[["Term", "NES", "NOM p-val", "FDR q-val"]].head(10)
+    # find the most significant up and down regulated pathways
+    by_nes = pre.res2d.copy()
+    by_nes["NES"] = by_nes["NES"].astype(float)
+    by_nes = by_nes.sort_values("NES")
+    plot_df = pd.concat([by_nes.head(10), by_nes.tail(10)]).drop_duplicates("Term")
 
-    # classic enrichment curve for one pathway
-    term = pre.res2d.Term.iloc[0]
-    gp.gseaplot(rank_metric=pre.ranking, term=term, **pre.results[term])
+    # plot the pathways
+    for term in [by_nes.Term.iloc[0], by_nes.Term.iloc[-1]]:
+        gp.gseaplot(rank_metric=pre.ranking, term=term, **pre.results[term])
 
-    # several pathways overlaid
-    terms = pre.res2d.Term[:5].tolist()
+    terms = by_nes.Term[:5].tolist() + by_nes.Term[-5:].tolist()
     gp.gseaplot2(
         terms=terms,
         RESs=[pre.results[t]["RES"] for t in terms],
@@ -275,22 +278,23 @@ def create_gsea(dds, type_1, type_2, gene_sets):
         figsize=(6, 8),
     )
 
-    # summary dotplot across pathways
-    gp.dotplot(pre.res2d, column="FDR q-val", cutoff=0.25, title=f"{type_1} vs {type_2} ({gene_sets})", figsize=(4, 6), ofname=f"results/gsea_{type_1}_{type_2}_MSigDB.png")
-
-def create_venn_diagram(dds, type_1, type_2):
+    gp.dotplot(plot_df, column="FDR q-val", cutoff=1, top_term=len(plot_df),
+               title=f"{variant} vs {control}", figsize=(4, 8),
+               ofname=f"results/gsea_{variant}_{control}_{gene_sets}.png")
+    
+def create_venn_diagram(dds, variant1, variant2):
     # find stats for both types compared against control
-    ds = create_ds(dds, 'Control', type_1)
+    ds = create_ds(dds, variant1, 'Control')
     sset1 = set(ds[(ds["padj"] < 0.05) & (ds["log2FoldChange"].abs() > 1)].index)
 
-    ds = create_ds(dds, 'Control', type_2)
+    ds = create_ds(dds, variant2, 'Control')
     sset2 = set(ds[(ds["padj"] < 0.05) & (ds["log2FoldChange"].abs() > 1)].index)
 
     # plot both subsets in a venn diagram
     plt.figure(figsize=(9, 7))
     venn2(
         subsets=(sset1, sset2),
-        set_labels=(f"{type_1} vs Control", f"{type_2} vs Control"),
+        set_labels=(f"{variant1} vs Control", f"{variant2} vs Control"),
         set_colors=("#1f77b4", "#ff7f0e"),
         alpha=0.6
     )
@@ -317,21 +321,21 @@ data = data[genes_to_keep]
 dds = DeseqDataSet(counts=data, metadata=metadata, design_factors="Type")
 dds.deseq2()
 
-# create_pca_deseq(dds)
-# create_pca_sklearn(data)
+create_pca_deseq(dds)
+create_pca_sklearn(data)
 #
-# create_volcano_plot(dds, "Control", "GDMA1")
-# create_volcano_plot(dds, "Control", "GDMA2")
-# create_volcano_plot(dds, "GDMA1", "GDMA2")
-#
-create_heatmap(dds, "Control", "GDMA1", "GDMA2", metadata)
+create_volcano_plot(dds, "GDMA1", "Control")
+create_volcano_plot(dds, "GDMA2", "Control")
+create_volcano_plot(dds, "GDMA2", "GDMA1")
 
-# create_gsea(dds, "Control", "GDMA1", "MSigDB")
-# create_gsea(dds, "Control", "GDMA2", "MSigDB")
-# create_gsea(dds, "GDMA1", "GDMA2", "MSigDB")
-#
-# create_gsea(dds, "Control", "GDMA1", "GO")
-# create_gsea(dds, "Control", "GDMA2", "GO")
-# create_gsea(dds, "GDMA1", "GDMA2", "GO")
+create_heatmap(dds, "GDMA1", "GDMA2", "Control", metadata)
 
-# create_venn_diagram(dds, "GDMA1", "GDMA2")
+create_gsea(dds, "GDMA1", "Control", "MSigDB")
+create_gsea(dds, "GDMA2", "Control", "MSigDB")
+create_gsea(dds, "GDMA2", "GDMA1", "MSigDB")
+#
+# create_gsea(dds, "GDMA1", "Control", "GO")
+# create_gsea(dds, "GDMA2", "Control", "GO")
+# create_gsea(dds, "GDMA2", "GDMA1", "GO")
+
+create_venn_diagram(dds, "GDMA1", "GDMA2")
