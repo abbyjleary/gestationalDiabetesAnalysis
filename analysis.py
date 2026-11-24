@@ -282,29 +282,39 @@ def create_gsea(dds, variant, control, gene_sets):
                title=f"{variant} vs {control}", figsize=(4, 8),
                ofname=f"results/gsea_{variant}_{control}_{gene_sets}.png")
     
-def create_venn_diagram(dds, variant1, variant2):
+def create_venn_diagram(dds, variant1, variant2, control):
     # find stats for both types compared against control
-    ds = create_ds(dds, variant1, 'Control')
+    ds = create_ds(dds, variant1, control)
     sset1 = set(ds[(ds["padj"] < 0.05) & (ds["log2FoldChange"].abs() > 1)].index)
 
-    ds = create_ds(dds, variant2, 'Control')
+    ds = create_ds(dds, variant2, control)
     sset2 = set(ds[(ds["padj"] < 0.05) & (ds["log2FoldChange"].abs() > 1)].index)
 
     # plot both subsets in a venn diagram
     plt.figure(figsize=(9, 7))
     venn2(
         subsets=(sset1, sset2),
-        set_labels=(f"{variant1} vs Control", f"{variant2} vs Control"),
+        set_labels=(f"{variant1} vs {control}", f"{variant2} vs {control}"),
         set_colors=("#1f77b4", "#ff7f0e"),
         alpha=0.6
     )
 
-    plt.title('Common Differentially Expressed Genes (Compared to Control)', fontsize=14, fontweight='bold')
+    plt.title(f'Common Differentially Expressed Genes (Compared to {control})', fontsize=14, fontweight='bold')
     plt.tight_layout()
     plt.savefig(f"results/venn_diagram.png", dpi=300)
 
 # read data and metadata from input files
 data, metadata = read_inputs(sys.argv[1], sys.argv[2])
+
+control = sys.argv[3]
+
+type_1 = sys.argv[4]
+type_2 = sys.argv[5]
+
+try:
+    gsea_gene_set = sys.argv[6]
+except IndexError:
+    gsea_gene_set = -1
 
 data = data.astype(int)
 
@@ -323,19 +333,14 @@ dds.deseq2()
 
 create_pca_deseq(dds)
 create_pca_sklearn(data)
-#
-create_volcano_plot(dds, "GDMA1", "Control")
-create_volcano_plot(dds, "GDMA2", "Control")
-create_volcano_plot(dds, "GDMA2", "GDMA1")
 
-create_heatmap(dds, "GDMA1", "GDMA2", "Control", metadata)
+create_volcano_plot(dds, type_1, control)
+create_volcano_plot(dds, type_2, control)
 
-create_gsea(dds, "GDMA1", "Control", "MSigDB")
-create_gsea(dds, "GDMA2", "Control", "MSigDB")
-create_gsea(dds, "GDMA2", "GDMA1", "MSigDB")
-#
-# create_gsea(dds, "GDMA1", "Control", "GO")
-# create_gsea(dds, "GDMA2", "Control", "GO")
-# create_gsea(dds, "GDMA2", "GDMA1", "GO")
+create_heatmap(dds, type_1, type_2, control, metadata)
 
-create_venn_diagram(dds, "GDMA1", "GDMA2")
+if gsea_gene_set != -1:
+    create_gsea(dds, type_1, control, gsea_gene_set)
+    create_gsea(dds, type_2, control, gsea_gene_set)
+
+create_venn_diagram(dds, type_1, type_2, control)

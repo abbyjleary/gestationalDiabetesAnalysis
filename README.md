@@ -1,5 +1,15 @@
 # Gestational Diabetes Data Analysis
 
+## Analysis.py Arguments
+\<data tsv\> \<metadata tsv\> \<control group name\> \<type 1 name\> \<type 2 name\>
+
+### Example
+```
+python3 analysis.py data.tsv metadata.tsv Control GDMA1 GDMA2
+```
+
+## Repository Layout
+
 ```
 gestationalDiabetesAnalysis/
 ├── reformat_data.py
