@@ -1,12 +1,19 @@
 # Gestational Diabetes Data Analysis
 
 ## Analysis.py Arguments
-\<data tsv\> \<metadata tsv\> \<control group name\> \<type 1 name\> \<type 2 name\>
+| Argument / Flag | Required | Description |
+| --- | --- | --- |
+| `<data_infile> `| Yes | Path to the input data file (tab-separated) |
+| `<metadata_infile>` | Yes | Path to the input metadata file (tab-separated) |
+| `<control>` | Yes | Label in metadata tsv of control group |
+| `--run_all` | No | Run all analyses (PCA, volcano plots, heatmap, GSEA, Venn diagram) |
+| `--run_pca` | No | Run PCA analysis |
+| `--run_volcano` | No | Run volcano plot analysis |
+| `--run_heatmap` | No | Run heatmap analysis |
+| `--run_gsea` | No | Run GSEA analysis |
+| `--run_venn` | No | Run Venn diagram analysis |
+| `--gsea_gene_set` | Yes, if `--run_gsea` or `--run_all` | Gene set for GSEA analysis (MSigDB or GO-BP) |
 
-### Example
-```
-python3 analysis.py data.tsv metadata.tsv Control GDMA1 GDMA2
-```
 
 ## Repository Layout
 
@@ -48,6 +55,7 @@ https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE249311
 3. FastQC (v0.11.7)
 4. STAR (v2.7.9a) aligning against GRCh38-2020-A
 5. Picard (v2.20.8)
+6. HTSeq (v0.11.2)
 
 ### FastQC
 
