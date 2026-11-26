@@ -9,6 +9,22 @@ from matplotlib_venn import venn2
 from sklearn.decomposition import PCA
 from adjustText import adjust_text
 import gseapy as gp
+import argparse
+
+def get_args():
+    parser = argparse.ArgumentParser(description="Differential GeneExpression Analysis")
+    parser.add_argument("data_infile", help="Path to the input data file (tab-separated)")
+    parser.add_argument("metadata_infile", help="Path to the metadata file (tab-separated)")
+    parser.add_argument("control", help="Label in metadata tsv of control group")
+    parser.add_argument("--run_all", action="store_true", help="Run all analyses (PCA, volcano plots, heatmap, GSEA, Venn diagram)")
+    parser.add_argument("--run_pca", action="store_true", help="Run PCA analysis")
+    parser.add_argument("--run_volcano", action="store_true", help="Run volcano plot analysis")
+    parser.add_argument("--run_heatmap", action="store_true", help="Run heatmap analysis")
+    parser.add_argument("--run_gsea", action="store_true", help="Run GSEA analysis")
+    parser.add_argument("--run_venn", action="store_true", help="Run Venn diagram analysis")
+    parser.add_argument("--gsea_gene_set", choices=["MSigDB", "GO-BP"], help="Gene set for GSEA analysis (MSigDB or GO-BP)")
+
+    return parser.parse_args()
 
 def read_inputs(data_infile, metadata_infile):
     # validate data input file and read to dataframe
@@ -20,14 +36,14 @@ def read_inputs(data_infile, metadata_infile):
 
     # validate metadata input file and read to dataframe
     try:
-        metadata = pd.read_csv(metadata_infile, sep='\t', index_col=0, header=0)
+        metadata = pd.read_csv(metadata_infile, sep='\t', index_col=0, names=["Sample", "Type"])
     except Exception as e:
         print(f"Problem reading metadata file ({metadata_infile}): {e}")
         exit(-1)
 
     return data, metadata
 
-def create_pca_deseq(dds):
+def create_pca(dds):
     # create a variant stabilization transformation based on the deseq dataset
     dds.vst(use_design=False)
     vst = pd.DataFrame(
@@ -78,63 +94,7 @@ def create_pca_deseq(dds):
     plt.grid(True, linestyle='--', alpha=0.5)
 
     plt.tight_layout()
-    plt.savefig(f"results/pca_deseq.png", dpi=300, bbox_inches="tight")
-
-def create_pca_sklearn(data):
-    # normalize data with log2 transformation
-    log_df = np.log2(data + 1)
-
-    # drop genes with no variance
-    log_df = log_df.loc[:, log_df.std(axis=0) > 0]
-
-    # z-score each gene across samples (number of stdevs away from mean)
-    z = (log_df - log_df.mean(axis=0)) / log_df.std(axis=0)
-
-    # project data into PCA components
-    pca = PCA(n_components=2)
-    pca_coords = pca.fit_transform(z)
-
-    # create dataframe from PCA components, with labels from original data
-    pca_df = pd.DataFrame(pca_coords, columns=["PC1", "PC2"], index=z.index)
-    pca_df["Type"] = labels
-
-    # find mean of each group of genes
-    group_means = log_df.groupby(labels).mean()
-
-    plt.figure(figsize=(9, 7))
-
-    # create plot for samples plotted on PCA
-    pca_df["Type"] = labels
-    ax = sns.scatterplot(
-        data=pca_df,
-        x='PC1',
-        y='PC2',
-        hue='Type',
-        s=100,
-        palette='Set1',
-        alpha=0.6
-    )
-
-    # label each point with sample name
-    for x, y, label in zip(pca_df["PC1"], pca_df["PC2"], pca_df.index):
-        ax.annotate(
-            label,
-            (x, y),
-            xytext=(5, -5),
-            textcoords="offset points",
-            va="center",
-        )
-
-
-    # Label PC axes with explained variance percentage
-    var_exp = pca.explained_variance_ratio_ * 100
-    plt.xlabel(f'PC1 ({var_exp[0]:.1f}% Variance Explained)', fontsize=12)
-    plt.ylabel(f'PC2 ({var_exp[1]:.1f}% Variance Explained)', fontsize=12)
-    plt.title('PCA of Gene Expression', fontsize=14, fontweight='bold')
-    plt.grid(True, linestyle='--', alpha=0.5)
-
-    plt.tight_layout()
-    plt.savefig(f"results/pca_sklearn.png", dpi=300, bbox_inches="tight")
+    plt.savefig(f"results/pca.png", dpi=300, bbox_inches="tight")
 
 def create_ds(dds, variant, control):
     # save various statistics from comparison of the two types
@@ -192,24 +152,17 @@ def create_volcano_plot(dds, variant, control):
     plt.tight_layout()
     plt.savefig(f"results/volcano_{variant}_{control}.png", dpi=300, bbox_inches="tight")
 
-def create_heatmap(dds, variant1, variant2, control, metadata):
+def create_heatmap(dds, disease_types, control, metadata):
     # normalize dataframe
     norm = pd.DataFrame(dds.layers["normed_counts"], index=dds.obs_names, columns=dds.var_names)
     log_norm = np.log2(norm + 1)  # samples x genes
+    top_genes = set()
 
-    # find statistics for each comparison and union together to compare all
-    res1 = create_ds(dds, variant1, control)
-    top1 = find_top_genes(res1)
+    for type in disease_types:
+        res = create_ds(dds, type, control)
+        top_genes = top_genes.union(find_top_genes(res))
 
-    res2 = create_ds(dds, variant2, control)
-    top2 = find_top_genes(res2)
-
-    res3 = create_ds(dds, variant2, variant1)
-    top3 = find_top_genes(res3)
-
-    top_genes = top1.union(top2).union(top3)
-
-    mat = log_norm[top_genes]
+    mat = log_norm[list(top_genes)]
 
     types = metadata.loc[mat.index, "Type"]
     palette = dict(zip(types.unique(), sns.color_palette("Greens", types.nunique())))
@@ -246,7 +199,7 @@ def create_gsea(dds, variant, control, gene_sets):
 
     if gene_sets == "MSigDB":
         gene_sets_name = "MSigDB_Hallmark_2020"
-    elif gene_sets == "GO":
+    elif gene_sets == "GO-BP":
         gene_sets_name = "GO_Biological_Process_2023"
 
     # compare genes to set of pathways
@@ -282,19 +235,19 @@ def create_gsea(dds, variant, control, gene_sets):
                title=f"{variant} vs {control}", figsize=(4, 8),
                ofname=f"results/gsea_{variant}_{control}_{gene_sets}.png")
     
-def create_venn_diagram(dds, variant1, variant2, control):
+def create_venn_diagram(dds, disease_types, control):
     # find stats for both types compared against control
-    ds = create_ds(dds, variant1, control)
-    sset1 = set(ds[(ds["padj"] < 0.05) & (ds["log2FoldChange"].abs() > 1)].index)
-
-    ds = create_ds(dds, variant2, control)
-    sset2 = set(ds[(ds["padj"] < 0.05) & (ds["log2FoldChange"].abs() > 1)].index)
+    subsets = []
+    for type in disease_types:
+        res = create_ds(dds, type, control)
+        sig_genes = set(res[(res["padj"] < 0.05) & (res["log2FoldChange"].abs() > 1)].index)
+        subsets.append(sig_genes)
 
     # plot both subsets in a venn diagram
     plt.figure(figsize=(9, 7))
     venn2(
-        subsets=(sset1, sset2),
-        set_labels=(f"{variant1} vs {control}", f"{variant2} vs {control}"),
+        subsets=subsets,
+        set_labels=[f"{type} vs {control}" for type in disease_types],
         set_colors=("#1f77b4", "#ff7f0e"),
         alpha=0.6
     )
@@ -303,18 +256,28 @@ def create_venn_diagram(dds, variant1, variant2, control):
     plt.tight_layout()
     plt.savefig(f"results/venn_diagram.png", dpi=300)
 
+args = get_args()
+
+if args.run_all:
+    args.run_pca = args.run_volcano = args.run_heatmap = args.run_gsea = args.run_venn = True
+    
 # read data and metadata from input files
-data, metadata = read_inputs(sys.argv[1], sys.argv[2])
+data, metadata = read_inputs(args.data_infile, args.metadata_infile)
 
-control = sys.argv[3]
+control = args.control
 
-type_1 = sys.argv[4]
-type_2 = sys.argv[5]
+disease_types = metadata["Type"].unique()
+disease_types = [t for t in disease_types if t != control]
 
-try:
-    gsea_gene_set = sys.argv[6]
-except IndexError:
-    gsea_gene_set = -1
+if args.run_gsea:
+    if args.gsea_gene_set is None:
+        print("Please specify a gene set for GSEA analysis using --gsea_gene_set (MSigDB or GO-BP).")
+        sys.exit(1)
+
+if args.run_venn:
+    if len(disease_types) < 2:
+        print("At least two disease types are required to create a Venn diagram.")
+        sys.exit(1)
 
 data = data.astype(int)
 
@@ -331,16 +294,20 @@ data = data[genes_to_keep]
 dds = DeseqDataSet(counts=data, metadata=metadata, design_factors="Type")
 dds.deseq2()
 
-create_pca_deseq(dds)
-create_pca_sklearn(data)
 
-create_volcano_plot(dds, type_1, control)
-create_volcano_plot(dds, type_2, control)
+if args.run_pca:
+    create_pca(dds)
 
-create_heatmap(dds, type_1, type_2, control, metadata)
+if args.run_volcano:
+    for type in disease_types:
+        create_volcano_plot(dds, type, control)
 
-if gsea_gene_set != -1:
-    create_gsea(dds, type_1, control, gsea_gene_set)
-    create_gsea(dds, type_2, control, gsea_gene_set)
+if args.run_heatmap:
+    create_heatmap(dds, disease_types, control, metadata)
 
-create_venn_diagram(dds, type_1, type_2, control)
+if args.run_gsea:
+    for type in disease_types:
+        create_gsea(dds, type, control, args.gsea_gene_set)
+
+if args.run_venn:
+    create_venn_diagram(dds, disease_types, control)
