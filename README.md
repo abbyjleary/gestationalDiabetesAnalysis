@@ -1,6 +1,6 @@
 # Gestational Diabetes Data Analysis
 
-## Analysis.py Arguments
+## main.py Arguments
 | Argument / Flag | Required | Description |
 | --- | --- | --- |
 | `<data_infile> `| Yes | Path to the input data file (tab-separated) |
@@ -19,12 +19,18 @@
 
 ```
 gestationalDiabetesAnalysis/
-├── reformat_data.py
-├── analysis.py
+├── main.py
 ├── data/
 │   ├── metadata.tsv (disease types of each sample)
 │   ├── data.tsv (master list of gene counts)
 │   └── SRR*.tsv (gene counts per sample)
+├── modules/
+│   ├── gsea.py
+│   ├── heatmap.py
+│   ├── pca.py
+│   ├── venn.py
+│   ├── volcano.py
+│   └── utils.py (functions for data input and manipulation)
 └── results/
     └── images of results graphs
 ```
